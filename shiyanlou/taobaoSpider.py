@@ -3,20 +3,22 @@ import urllib
 import re
 import httplib2
 import os
-from PIL import Image
-import time
 from datetime import datetime
 from Tkinter import *
+import json
+from lxml import etree
+
 '''
 Created on May 10, 2016
 @author: qianbingbing
-@funcation:get image from taobao
+@funcation:get information from Taobao or Tmall
 parameter:url
 return:image
 '''
-TIMEOUT = 5
-DEFAULT_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36',
+TIMEOUT = 100
+#设置Request Headers
+DEFAULT_HEADERS1 = {
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:18.0) Gecko/20100101 Firefox/18.0',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'en-us,en;q=0.5',
     'Accept-Encoding': 'gzip',
@@ -24,19 +26,35 @@ DEFAULT_HEADERS = {
     'Keep-Alive': '115',
     'Connection': 'keep-alive',
     'Cache-Control': 'max-age=0',
-    'Host':'cbu01.alicdn.com'
+    'Host':'dsc.taobaocdn.com'
 }
-FODLER_NAME = ''
+#设置Request Headers
+DEFAULT_HEADERS2 = {
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:18.0) Gecko/20100101 Firefox/18.0',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-us,en;q=0.5',
+    'Accept-Encoding': 'gzip',
+    'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+    'Keep-Alive': '115',
+    'Connection': 'keep-alive',
+    'Cache-Control': 'max-age=0',
+    'Host':'gd3.alicdn.com'
+}
+#定义全局变量
 PICPATH = ''
-def http_get(url):
+def http_get1(url):
         conn = httplib2.Http(timeout=TIMEOUT)
-        content = conn.request(uri=url, method='GET', body=None, headers=DEFAULT_HEADERS)
+        content = conn.request(uri=url, method='GET', body=None, headers=DEFAULT_HEADERS1)
+        return content
+def http_get2(url):
+        conn = httplib2.Http(timeout=TIMEOUT)
+        content = conn.request(uri=url, method='GET', body=None, headers=DEFAULT_HEADERS2)
         return content
 #创建图片存放目录
 def set_fodlerName():
-    global FODLER_NAME,PICPATH
-    #foldername = datetime.now().strftime('%Y-%m-%d-%H-%M')
-    PICPATH = 'F:\\taobaoImage\\%s\\' % (FODLER_NAME) #下载到的本地目录
+    global PICPATH
+    foldername = datetime.now().strftime('%Y-%m-%d-%H-%M')
+    PICPATH = 'F:\\taobaoImage\\%s\\' % (foldername) #下载到的本地目录
     if not os.path.exists(PICPATH):   #路径不存在时创建一个
         os.makedirs(PICPATH)
     return PICPATH
@@ -44,42 +62,59 @@ def set_fodlerName():
 def getRealurl(url):
     html = urllib.urlopen(url).read()
     #天猫店铺
-    #reg1 = r'"descUrl":"(.*?)"'
-    reg2 = r'descUrl          : location\.protocol===\'http\:\' \? \'(.*?\')'
-    imgre = re.compile(reg2)
-    imglist = re.findall(imgre,html)
-    print imglist
-    return imglist[0]
-#根据详细描述的api得到所有详细描述中图片
-def getRealimg(url):
-    html = urllib.urlopen(url).read()
-    set_fodlerName()
-    reg1 = r'src="(.*?\.jpg)" '
-    reg2 = r'src=\\"(.*?\.jpg)'
+    reg1 = r'"descUrl":"(.*?)"'
+    #普通店铺
+    reg2 = r'descUrl          : location\.protocol===\'http\:\' \? \'(.*?)\''
     imgre = re.compile(reg1)
     imglist = re.findall(imgre,html)
-    '''
-	多次调试发现，有些商品的地址src后面带\\所以
-	如果通过第一个正则匹配不到内容则尝试使用第二个正则来匹配
-	'''
     if imglist:
-        print imglist
-        pass
+        print '天猫店铺:'+ imglist[0]
     else:
         imgre = re.compile(reg2)
         imglist = re.findall(imgre,html)
-        print imglist
+        print '普通店铺：'+ imglist[0]
+    return imglist[0]
+#根据详细描述的api得到详细描述图片
+def getRealimg(url):
+    global PICPATH
+    html = http_get1('http:'+url)
+    #两条正则规则。反复调试得出的结果，可能还有bug
+    reg1 = r'middle" src="(.*?)">'
+    reg2 = r'src="(.*?)" align="absmiddle">'
+    imgre = re.compile(reg1)
+    imglist = re.findall(imgre,html[1])
+    '''
+	如果通过第一个正则匹配不到内容则尝试使用第二个正则来匹配
+	'''
+    if imglist:
+        print '第一条正则有效'
+        for i in imglist:
+            print i
+    else:
+        print '第一条正则无效'
+        imgre = re.compile(reg2)
+        imglist = re.findall(imgre,html[1])
+        for i in imglist:
+            print i
     x = 1
     for image in imglist:
-        getimg(image,u'详情图%s.jpg'%x)
+        #调试后发现getimg获取图片都会403,所以使用urlretrieve  待确定原因
+        #getimg(image,u'详情图%s.jpg'%x)
+        urllib.urlretrieve(image,PICPATH+u'/详情图%s.jpg'%x)
+        print u'详情图%s'%x
         x += 1
 #抓取颜色分类图片
 def getColorImg(url):
     html = urllib.urlopen(url).read()
-    reg3 = r'background:url\((.*?\.jpg)'
-    imgre = re.compile(reg3)
+    reg = r'background:url\((.*?\.jpg)'
+    imgre = re.compile(reg)
     imglist = re.findall(imgre,html)
-
+    print imglist
+    x = 1
+    for image in imglist:
+        getimg(image,u'颜色图%s.jpg'%x)
+        print u'颜色%s'%x
+        x += 1
 #抓取小图
 def getSamilImg(url):
     html = urllib.urlopen(url).read()
@@ -90,12 +125,15 @@ def getSamilImg(url):
     imgre = re.compile(reg1)
     imglist = re.findall(imgre,html)
     if imglist:
-        x = 1
-        for image in imglist:
-            getimg(image,u'缩略图%s.jpg'%x)
-            x += 1
+        print '天猫店铺:'+ imglist[0]
     else:
-        return
+        imgre = re.compile(reg2)
+        imglist = re.findall(imgre,html)
+        print '普通店铺：'+ imglist[0]
+    x = 1
+    for image in imglist:
+        getimg(image,u'缩图%s.jpg'%x)
+        x += 1
 #保存图片
 def getimg(imageURL,fileName):
     global PICPATH
@@ -104,21 +142,71 @@ def getimg(imageURL,fileName):
     else:
         imageURL = 'http:'+imageURL
     image_name =PICPATH + fileName
-    content = http_get(imageURL)
+    content = http_get2(imageURL)
     with open(image_name, 'wb') as f:
         f.write(content[1])
     print u'保存图片%s'%fileName
 '''
+#获取天猫商城详细描述api
+#此接口作废，不再适用，但可借鉴次接口的写法
+def getdescrptionApi(url):
+     html = urllib.urlopen(url).read()
+     reg1 = r'"newProGroup"[\s\S]+"weight":'
+     imgre = re.compile(reg1)
+     imglist = re.findall(imgre,html.decode('gbk', 'ignore'))
+     print imglist
+     s = '{'+imglist[0]+'0}'
+     jo = json.loads(s,encoding='utf-8')
+     for group in jo['newProGroup']:
+         print group['groupName']
+         for j in group['attrs']:
+             print j['name']+':'+j['value']
+     reg2 = r'"title":"(.*?)"'
+     imgre = re.compile(reg2)
+     imglist = re.findall(imgre,html.decode('gbk', 'ignore'))
+     print imglist[0].encode('utf-8')
+'''
+#天猫获取宝贝标题和产品参数信息
+def getdescrptionTmall(url):
+     html = urllib.urlopen(url).read()
+     page = etree.HTML(html.lower().decode('gbk'))
+     attrlist = page.xpath("//div[@class='attributes-list']//li")
+     for i in attrlist:
+         print i.text
+     reg1 = r'"title":"(.*?)"'
+     imgre = re.compile(reg1)
+     imglist = re.findall(imgre,html.decode('gbk', 'ignore'))
+     print imglist[0].encode('utf-8')
+#店铺获取宝贝标题和产品参数信息
+def getdescriptionTb(url):
+    html = urllib.urlopen(url).read()
+    page = etree.HTML(html.lower().decode('gbk'))
+    attrlist = page.xpath("//ul[@class='attributes-list']//li")
+    for i in attrlist:
+        print i.text
+    mainTitle = page.xpath("//h3[@class='tb-main-title']")
+    for i in mainTitle:
+        print i.text
+getdescrptionTmall('https://detail.tmall.com/item.htm?spm=a230r.1.14.70.1gy6cm&id=41803189529&ns=1&abbucket=16')
+    #TODO:写入csv文件，实现一键复制店铺信息
+
+#getdescrptionapi('https://detail.tmall.com/item.htm?spm=a230r.1.14.37.hIJluL&id=537078569720&ns=1&abbucket=16')
+#set_fodlerName()
+#getRealimg(getRealurl('https://detail.tmall.com/item.htm?spm=a230r.1.14.37.hIJluL&id=537078569720&ns=1&abbucket=16'))
+#getdescriptinApi('https://detail.tmall.com/item.htm?spm=a230r.1.14.1.tl9oK9&id=537078569720&cm_id=140105335569ed55e27b&abbucket=8')
+'''
+#以下是图形化界面
 def callback():
     rtnkey()
 def rtnkey(event=None):
+    set_fodlerName()
     getRealimg(getRealurl(e.get()))
     getSamilImg(e.get())
+    getColorImg(e.get())
 root = Tk()
 root.title('imageSpider')
 e = StringVar()
 entry = Entry(root, validate='key', text=e, width=50).pack()
-Button(root, text="抓取图片", fg="blue",bd=2,width=28,command=callback).pack()
+Button(root, text="抓取淘宝店铺图片", fg="blue",bd=2,width=28,command=callback).pack()
 root.mainloop()
 '''
-
