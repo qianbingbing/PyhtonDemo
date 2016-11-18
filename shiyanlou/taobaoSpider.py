@@ -50,17 +50,19 @@ def http_get2(url):
         conn = httplib2.Http(timeout=TIMEOUT)
         content = conn.request(uri=url, method='GET', body=None, headers=DEFAULT_HEADERS2)
         return content
+def getPageSource(url):
+     html = urllib.urlopen(url).read()
+     return html
 #创建图片存放目录
-def set_fodlerName():
+def set_fodlerName(html):
     global PICPATH
-    foldername = datetime.now().strftime('%Y-%m-%d-%H-%M')
+    foldername = getTitle(html)
     PICPATH = 'F:\\taobaoImage\\%s\\' % (foldername) #下载到的本地目录
     if not os.path.exists(PICPATH):   #路径不存在时创建一个
         os.makedirs(PICPATH)
     return PICPATH
-#获取详细描述的api
-def getRealurl(url):
-    html = urllib.urlopen(url).read()
+#获取详细描述的链接
+def getRealurl(html):
     #天猫店铺
     reg1 = r'"descUrl":"(.*?)"'
     #普通店铺
@@ -74,10 +76,10 @@ def getRealurl(url):
         imglist = re.findall(imgre,html)
         print '普通店铺：'+ imglist[0]
     return imglist[0]
-#根据详细描述的api得到详细描述图片
-def getRealimg(url):
+#根据详细描述的链接得到详细描述图片
+def getRealimg(descurl):
     global PICPATH
-    html = http_get1('http:'+url)
+    html = http_get1('http:'+descurl)
     #两条正则规则。反复调试得出的结果，可能还有bug
     reg1 = r'middle" src="(.*?)">'
     reg2 = r'src="(.*?)" align="absmiddle">'
@@ -103,9 +105,8 @@ def getRealimg(url):
         urllib.urlretrieve(image,PICPATH+u'/详情图%s.jpg'%x)
         print u'详情图%s'%x
         x += 1
-#抓取颜色及颜色图片
-def getColorImg(url):
-    html = urllib.urlopen(url).read()
+#抓取颜色文字及颜色图片链接
+def getColorImg(html):
     reg = r'background:url\((.*?\.jpg)'
     imgre = re.compile(reg)
     imglist = re.findall(imgre,html)
@@ -123,25 +124,19 @@ def getColorImg(url):
     for image in imglist:
         #getimg(image,u'颜色图%s.jpg'%x)
         print image
-#抓取小图
-def getSamilImg(url):
-    html = urllib.urlopen(url).read()
-    #天猫店铺
-    reg1 = r'img src="(.*?\.jpg)'
-    #普通店铺
-    reg2 = r'img data-src="(.*?\.jpg)'
-    imgre = re.compile(reg1)
-    imglist = re.findall(imgre,html)
-    if imglist:
-        print '天猫店铺:'+ imglist[0]
-    else:
-        imgre = re.compile(reg2)
-        imglist = re.findall(imgre,html)
-        print '普通店铺：'+ imglist[0]
-    x = 1
-    for image in imglist:
-        getimg(image,u'缩图%s.jpg'%x)
-        x += 1
+#获取标题文字
+def getTitle(html):
+
+     #淘宝
+     reg1 = r'"title":"(.*?)"'
+     imgre = re.compile(reg1)
+     imglist = re.findall(imgre,html.decode('gbk', 'ignore'))
+     print imglist[0].encode('utf-8')
+     #天猫
+     page = etree.HTML(html.lower().decode('gbk'))
+     mainTitle = page.xpath("//h3[@class='tb-main-title']")
+     for i in mainTitle:
+         print i.text
 #保存图片
 def getimg(imageURL,fileName):
     global PICPATH
@@ -154,54 +149,32 @@ def getimg(imageURL,fileName):
     with open(image_name, 'wb') as f:
         f.write(content[1])
     print u'保存图片%s'%fileName
-'''
-#获取天猫商城详细描述api
-#此接口作废，不再适用，但可借鉴次接口的写法
-def getdescrptionApi(url):
-     html = urllib.urlopen(url).read()
-     reg1 = r'"newProGroup"[\s\S]+"weight":'
-     imgre = re.compile(reg1)
-     imglist = re.findall(imgre,html.decode('gbk', 'ignore'))
-     print imglist
-     s = '{'+imglist[0]+'0}'
-     jo = json.loads(s,encoding='utf-8')
-     for group in jo['newProGroup']:
-         print group['groupName']
-         for j in group['attrs']:
-             print j['name']+':'+j['value']
-     reg2 = r'"title":"(.*?)"'
-     imgre = re.compile(reg2)
-     imglist = re.findall(imgre,html.decode('gbk', 'ignore'))
-     print imglist[0].encode('utf-8')
-'''
-#天猫获取宝贝标题和产品参数信息
-def getdescrptionTmall(url):
-     html = urllib.urlopen(url).read()
-     reg1 = r'"title":"(.*?)"'
-     imgre = re.compile(reg1)
-     imglist = re.findall(imgre,html.decode('gbk', 'ignore'))
-     print imglist[0].encode('utf-8')
-     page = etree.HTML(html.lower().decode('gbk'))
-     attrlist = page.xpath("//div[@class='attributes-list']//li")
-     for i in attrlist:
-         print i.text
-#店铺获取宝贝标题和产品参数信息
-def getdescriptionTb(url):
-    html = urllib.urlopen(url).read()
+#获取产品参数信息
+def getdescription(html):
     page = etree.HTML(html.lower().decode('gbk'))
     attrlist = page.xpath("//ul[@class='attributes-list']//li")
     for i in attrlist:
         print i.text
-    mainTitle = page.xpath("//h3[@class='tb-main-title']")
-    for i in mainTitle:
-        print i.text
-#天猫获shopSet api
-def getTShopSetup(url):
-    html = urllib.urlopen(url).read()
+#获取宝贝标题
+def getTitles(html):
+     reg1 = r'"title":"(.*?)"'
+     imgre = re.compile(reg1)
+     mainTitle = re.findall(imgre,html.decode('gbk', 'ignore'))
+     if mainTitle:
+         print mainTitle[0].encode('utf-8').strip()
+     else:
+         page = etree.HTML(html.lower().decode('gbk'))
+         mainTitle = page.xpath("//h3[@class='tb-main-title']")
+         for i in mainTitle:
+            print i.text.strip()
+#天猫获shopSetapi
+def getTShopSetup(html):
     reg1 = r'"api":[\s\S]+"valTimeLeft":'
     imgre = re.compile(reg1)
     imglist = re.findall(imgre,html)
-    s = '{'+imglist[0]+'0}'
+    api  = '{'+imglist[0]+'0}'
+    return api
+'''
     jo = json.loads(s,encoding='GB2312')
     for i in jo['valItemInfo']['skuList']:
         pvs = i['pvs']
@@ -213,7 +186,32 @@ def getTShopSetup(url):
             if pvs in key:
                 print u"价格："+ value['price']
                 print u"库存："+ str(value['stock'])
-getColorImg('https://item.taobao.com/item.htm?spm=a230r.1.14.64.ODAozM&id=528150221486&ns=1&abbucket=18#detail')
+'''
+#获取主图
+def getAuctionImages(url):
+    html = urllib.urlopen(url).read()
+    reg1 = r'auctionImages    : \[(.*?)\]'
+    imgre = re.compile(reg1)
+    auctionImages = re.findall(imgre,html)
+    if auctionImages:
+        for image in auctionImages[0].split(","):
+            getimg(image,u'详情图%s.jpg')
+    else:
+        setup = getTShopSetup(html)
+        jo = json.loads(setup,encoding='GB2312')
+        for image in jo['propertyPics']['default']:
+            getimg(image,u'详情图%s.jpg')
+#获取宝贝类别
+def getCid(url):
+     html = urllib.urlopen(url).read()
+     setup = getTShopSetup(html)
+     jo = json.loads(setup,encoding='GB2312')
+     print jo['rootCatId']
+
+
+
+getCid('https://item.taobao.com/item.htm?spm=a219r.lm5693.14.1.7BQHI1&id=537192815463&ns=1&abbucket=18#detail')
+#getAuctionImages('https://detail.tmall.com/item.htm?id=539564000825&ali_refid=a3_430583_1006:1104510775:N:%E5%B8%BD:82262d7b2fdfbfb85a8440a08c6f1fd1&ali_trackid=1_82262d7b2fdfbfb85a8440a08c6f1fd1&spm=a230r.1.14.3.4T1s5k&sku_properties=20509:12430610')
 #set_fodlerName()
 #getdescrptionTmall('https://detail.tmall.com/item.htm?id=21340371599&spm=a223v.7835278.t0.2.Zul21A&pvid=912c9641-1244-42e4-9c6f-9e719782898c&scm=1007.12144.63460.8949_0&skuId=3150516165611')
 #getTShopSetup('https://detail.tmall.com/item.htm?id=21340371599&spm=a223v.7835278.t0.2.Zul21A&pvid=912c9641-1244-42e4-9c6f-9e719782898c&scm=1007.12144.63460.8949_0&skuId=3150516165611')
